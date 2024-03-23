@@ -69,6 +69,10 @@ impl<P: AsRef<Path>> Drop for DlFile<P> {
                 Ok(meta) if meta.len() == 0 => {
                     // SAFETY: this only gets called once, and then we return early to prevent
                     // the drop call at the bottom of this drop impl from being called.
+                    //
+                    // if something panics before we can return, this is still safe from a double
+                    // free.
+
                     unsafe { ManuallyDrop::drop(&mut self.file) };
 
                     if let Err(error) = std::fs::remove_file(self.path.as_ref()) {
