@@ -8,6 +8,7 @@ use bytes::Buf;
 use futures::{Stream, TryStreamExt};
 use reqwest::StatusCode;
 use tokio::fs::File;
+use tokio::io::AsyncSeekExt;
 use tokio::sync::Semaphore;
 
 mod builder;
@@ -102,8 +103,17 @@ impl<P: AsRef<Path>> DlFile<P> {
         DlFileBuilder::new(path)
     }
 
+    /// If downloading encountered an error, this can be used to reset the file without
+    /// having to close + reopen it.
+    ///
+    /// In this context, 'reset' means seeking to the start of the file, and truncating to 0 bytes.
+    pub async fn reset(&mut self) -> io::Result<()> {
+        self.file.seek(io::SeekFrom::Start(0)).await?;
+        self.file.set_len(0).await
+    }
+
     pub async fn download_from_io_stream<S, B>(
-        mut self,
+        &mut self,
         size: Option<u64>,
         stream: S,
     ) -> io::Result<u64>
@@ -113,14 +123,14 @@ impl<P: AsRef<Path>> DlFile<P> {
     {
         futures::pin_mut!(stream);
 
-        let download = driver::DownloadDriver::new(&mut self, stream, size).await;
+        let download = driver::DownloadDriver::new(self, stream, size).await;
 
         futures::pin_mut!(download);
 
         download.await
     }
 
-    pub async fn download_from_response(self, response: reqwest::Response) -> io::Result<u64> {
+    pub async fn download_from_response(&mut self, response: reqwest::Response) -> io::Result<u64> {
         fn reqwest_error_to_io_error(error: reqwest::Error) -> io::Error {
             let kind = if let Some(status) = error.status() {
                 match status {
@@ -159,7 +169,7 @@ impl<P: AsRef<Path>> DlFile<P> {
     }
 
     pub async fn download_from_stream<S, B, E, F>(
-        self,
+        &mut self,
         size: Option<u64>,
         stream: S,
         map_err: F,
