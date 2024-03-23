@@ -21,8 +21,13 @@ pub struct DlFile<P: AsRef<Path> = PathBuf> {
     semaphore: Option<Arc<Semaphore>>,
     delete_if_empty: bool,
     progress: Option<Box<dyn progress::DlProgress>>,
-    on_drop_error: Option<fn(io::Error)>,
+    on_drop_error: fn(&Path, DropError),
     file: ManuallyDrop<File>,
+}
+
+pub enum DropError {
+    Metadata(io::Error),
+    Deleting(io::Error),
 }
 
 impl<P: AsRef<Path>> Deref for DlFile<P> {
@@ -60,14 +65,6 @@ impl<P: AsRef<Path>> fmt::Debug for DlFile<P> {
 impl<P: AsRef<Path>> Drop for DlFile<P> {
     fn drop(&mut self) {
         if self.delete_if_empty {
-            fn default_on_metadata_error(error: io::Error) {
-                eprintln!("error getting file metadata: {error}");
-            }
-
-            fn default_on_delete_error(error: io::Error) {
-                eprintln!("error getting file metadata: {error}");
-            }
-
             match std::fs::metadata(self.path.as_ref()) {
                 Ok(meta) if meta.len() == 0 => {
                     // SAFETY: this only gets called once, and then we return early to prevent
@@ -75,13 +72,13 @@ impl<P: AsRef<Path>> Drop for DlFile<P> {
                     unsafe { ManuallyDrop::drop(&mut self.file) };
 
                     if let Err(error) = std::fs::remove_file(self.path.as_ref()) {
-                        self.on_drop_error.unwrap_or(default_on_delete_error)(error);
+                        (self.on_drop_error)(self.path.as_ref(), DropError::Deleting(error));
                     }
                     // bail, so we dont drop twice
                     return;
                 }
                 Ok(_) => (),
-                Err(error) => self.on_drop_error.unwrap_or(default_on_metadata_error)(error),
+                Err(error) => (self.on_drop_error)(self.path.as_ref(), DropError::Metadata(error)),
             }
         }
 
