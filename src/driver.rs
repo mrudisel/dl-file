@@ -1,7 +1,7 @@
 use std::io;
 use std::path::Path;
 use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::task::{ready, Context, Poll};
 
 use bytes::Buf;
 use futures::Stream;
@@ -72,8 +72,7 @@ where
             // work towards exhausting the current buffer
             if let Some(ref mut current) = this.current_buf {
                 'current_buf: loop {
-                    let written =
-                        std::task::ready!(this.file.as_mut().poll_write(cx, current.chunk()))?;
+                    let written = ready!(this.file.as_mut().poll_write(cx, current.chunk()))?;
 
                     if written > 0 {
                         current.advance(written);
@@ -94,7 +93,7 @@ where
             // if empty, poll more bytes from the stream
             if let Some(ref mut stream) = this.stream {
                 'poll_stream: loop {
-                    let chunk = match std::task::ready!(stream.as_mut().poll_next(cx)) {
+                    let chunk = match ready!(stream.as_mut().poll_next(cx)) {
                         Some(result) => result?,
                         None => {
                             *this.stream = None;
@@ -117,7 +116,7 @@ where
         }
 
         // if we made it here, there's no stream left and no current chunk, so we need to flush.
-        std::task::ready!(this.file.as_mut().poll_flush(cx))?;
+        ready!(this.file.as_mut().poll_flush(cx))?;
 
         if let Some(ref mut prog) = this.progress {
             prog.finished(this.path);
