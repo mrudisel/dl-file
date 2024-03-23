@@ -7,14 +7,14 @@ use bytes::Buf;
 use futures::Stream;
 use tokio::fs::File;
 use tokio::io::AsyncWrite;
-use tokio::sync::OwnedSemaphorePermit;
+use tokio::sync::SemaphorePermit;
 
 use crate::progress::DlProgress;
 use crate::DlFile;
 
 pin_project_lite::pin_project! {
     pub(super) struct DownloadDriver<'a, S: Stream<Item = io::Result<B>>, B: Buf> {
-        permit: Option<OwnedSemaphorePermit>,
+        permit: Option<SemaphorePermit<'a>>,
         path: &'a Path,
         stream: Option<Pin<&'a mut S>>,
         current_buf: Option<B>,
@@ -35,8 +35,8 @@ where
         stream: Pin<&'a mut S>,
         size: Option<u64>,
     ) -> Self {
-        let permit = match file.semaphore.take() {
-            Some(semaphore) => Some(semaphore.acquire_owned().await.unwrap()),
+        let permit = match file.semaphore {
+            Some(ref semaphore) => Some(semaphore.acquire().await.unwrap()),
             None => None,
         };
 
@@ -123,6 +123,8 @@ where
         if let Some(ref mut prog) = this.progress {
             prog.finished(this.path);
         }
+
+        let _ = this.permit.take();
 
         Poll::Ready(Ok(*this.bytes_copied))
     }
