@@ -17,6 +17,7 @@ pub struct DlFileBuilder<P: AsRef<Path> = PathBuf> {
 }
 
 impl<P: AsRef<Path>> DlFileBuilder<P> {
+    #[inline]
     pub fn new(path: P) -> Self {
         Self {
             path,
@@ -27,31 +28,37 @@ impl<P: AsRef<Path>> DlFileBuilder<P> {
         }
     }
 
+    #[inline]
     pub fn delete_if_empty(mut self, delete_if_empty: bool) -> Self {
         self.delete_if_empty = delete_if_empty;
         self
     }
 
+    #[inline]
     pub fn with_semaphore(mut self, semaphore: Arc<Semaphore>) -> Self {
         self.semaphore = Some(semaphore);
         self
     }
 
+    #[inline]
     pub fn with_semaphore_ref(self, semaphore: &Arc<Semaphore>) -> Self {
         self.with_semaphore(Arc::clone(semaphore))
     }
 
+    #[inline]
     pub fn with_progress(mut self, progress: impl DlProgress + 'static) -> Self {
         self.progress = Some(Box::new(progress));
         self
     }
 
+    #[inline]
     pub fn on_drop_error(mut self, on_drop_error: fn(&Path, DropError)) -> Self {
         self.on_drop_error = Some(on_drop_error);
         self
     }
 
     #[cfg(feature = "tracing")]
+    #[inline]
     pub fn trace_on_drop_error(self, level: tracing::Level) -> Self {
         self.on_drop_error(match level {
             tracing::Level::TRACE => default_trace_on_drop_error,
@@ -106,20 +113,24 @@ impl<P: AsRef<Path>> DlFileBuilder<P> {
         })
     }
 
+    #[inline]
     pub async fn open_overwrite(self) -> io::Result<DlFile<P>> {
         self.open(OverwriteBehavior::Do).await
     }
 
+    #[inline]
     pub async fn open_new(self) -> io::Result<DlFile<P>> {
         self.open(OverwriteBehavior::Dont).await
     }
 
+    #[inline]
     pub async fn open_overwrite_if_empty(self) -> io::Result<DlFile<P>> {
         self.open(OverwriteBehavior::DoIfEmpty).await
     }
 }
 
 #[cfg(not(feature = "tracing"))]
+#[inline]
 fn default_on_drop_error(path: &Path, error: DropError) {
     match error {
         DropError::Deleting(error) => {
@@ -136,6 +147,7 @@ fn default_on_drop_error(path: &Path, error: DropError) {
 macro_rules! define_tracing_error_fns {
     ($($fn_name:ident($macro_ident:ident)),* $(,)?) => {
         $(
+            #[inline]
             fn $fn_name(path: &Path, error: DropError) {
                 let (message, error) = match error {
                     DropError::Deleting(error) => ("error deleting file on drop", error),

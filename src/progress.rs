@@ -12,28 +12,34 @@ pub trait DlProgress {
 }
 
 impl<P: DlProgress + ?Sized> DlProgress for &mut P {
+    #[inline]
     fn start(&mut self, path: &Path, total_bytes: Option<u64>) {
         P::start(self, path, total_bytes)
     }
 
+    #[inline]
     fn update(&mut self, path: &Path, bytes_written: u64) {
         P::update(self, path, bytes_written)
     }
 
+    #[inline]
     fn finished(&mut self, path: &Path) {
         P::finished(self, path)
     }
 }
 
 impl<P: DlProgress + ?Sized> DlProgress for Box<P> {
+    #[inline]
     fn start(&mut self, path: &Path, total_bytes: Option<u64>) {
         P::start(self, path, total_bytes)
     }
 
+    #[inline]
     fn update(&mut self, path: &Path, bytes_written: u64) {
         P::update(self, path, bytes_written)
     }
 
+    #[inline]
     fn finished(&mut self, path: &Path) {
         P::finished(self, path)
     }
@@ -44,14 +50,17 @@ where
     P: ?Sized,
     for<'a> &'a P: DlProgress,
 {
+    #[inline]
     fn start(&mut self, path: &Path, total_bytes: Option<u64>) {
         <&P as DlProgress>::start(&mut &**self, path, total_bytes)
     }
 
+    #[inline]
     fn update(&mut self, path: &Path, bytes_written: u64) {
         <&P as DlProgress>::update(&mut &**self, path, bytes_written)
     }
 
+    #[inline]
     fn finished(&mut self, path: &Path) {
         <&P as DlProgress>::finished(&mut &**self, path)
     }
@@ -71,6 +80,7 @@ pub struct ProgressContainer<
 }
 
 impl<Ctx, S, U, F> ProgressContainer<Ctx, S, U, F> {
+    #[inline]
     pub const fn new(ctx: Ctx, start_fn: S, update_fn: U, finish_fn: F) -> Self {
         Self {
             ctx,
@@ -87,16 +97,19 @@ where
     U: FnMut(&mut Ctx, &Path, u64),
     F: FnOnce(&mut Ctx, &Path),
 {
+    #[inline]
     fn start(&mut self, path: &Path, total_bytes: Option<u64>) {
         if let Some(start_fn) = self.start_fn.take() {
             (start_fn)(&mut self.ctx, path, total_bytes);
         }
     }
 
+    #[inline]
     fn update(&mut self, path: &Path, bytes_written: u64) {
         (self.update_fn)(&mut self.ctx, path, bytes_written);
     }
 
+    #[inline]
     fn finished(&mut self, path: &Path) {
         if let Some(finish_fn) = self.finish_fn.take() {
             (finish_fn)(&mut self.ctx, path);
@@ -110,16 +123,19 @@ where
     U: Fn(&Ctx, &Path, u64),
     F: Fn(&Ctx, &Path),
 {
+    #[inline]
     fn start(&mut self, path: &Path, total_bytes: Option<u64>) {
         if let Some(ref start_fn) = self.start_fn {
             (start_fn)(&self.ctx, path, total_bytes);
         }
     }
 
+    #[inline]
     fn update(&mut self, path: &Path, bytes_written: u64) {
         (self.update_fn)(&self.ctx, path, bytes_written);
     }
 
+    #[inline]
     fn finished(&mut self, path: &Path) {
         if let Some(ref finish_fn) = self.finish_fn {
             (finish_fn)(&self.ctx, path);
@@ -141,6 +157,7 @@ pub struct ProgressHandleShared {
 }
 
 impl<F> ProgressHandle<F> {
+    #[inline]
     pub fn new(on_update: F) -> Self {
         Self {
             shared: Arc::new(ProgressHandleShared {
@@ -152,12 +169,14 @@ impl<F> ProgressHandle<F> {
         }
     }
 
+    #[inline]
     pub fn shared(&self) -> &Arc<ProgressHandleShared> {
         &self.shared
     }
 }
 
 impl ProgressHandleShared {
+    #[inline]
     pub fn state(&self) -> DlState {
         if self.is_finished() {
             DlState::Finished
@@ -168,14 +187,17 @@ impl ProgressHandleShared {
         }
     }
 
+    #[inline]
     pub fn is_finished(&self) -> bool {
         self.finished.load(Relaxed)
     }
 
+    #[inline]
     pub fn get_bytes_written(&self) -> u64 {
         self.bytes_written.load(Relaxed)
     }
 
+    #[inline]
     pub fn get_total_bytes(&self) -> Option<u64> {
         match self.total_bytes.load(Relaxed) {
             0 => None,
@@ -195,6 +217,7 @@ impl<F> DlProgress for &ProgressHandle<F>
 where
     F: Fn(&Path, u64, Option<u64>, DlState),
 {
+    #[inline]
     fn start(&mut self, path: &Path, total_bytes: Option<u64>) {
         if let Some(total) = total_bytes {
             self.shared.total_bytes.store(total, Relaxed);
@@ -203,6 +226,7 @@ where
         (self.on_update)(path, 0, total_bytes, DlState::Starting);
     }
 
+    #[inline]
     fn update(&mut self, path: &Path, bytes_written: u64) {
         let max = self
             .shared
@@ -213,6 +237,7 @@ where
         (self.on_update)(path, max, self.shared.get_total_bytes(), DlState::Running);
     }
 
+    #[inline]
     fn finished(&mut self, path: &Path) {
         self.shared.finished.store(true, Relaxed);
 

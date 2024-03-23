@@ -29,6 +29,7 @@ where
     S: Stream<Item = io::Result<B>>,
     B: Buf,
 {
+    #[inline]
     pub(super) async fn new<P: AsRef<Path>>(
         file: &'a mut DlFile<P>,
         stream: Pin<&'a mut S>,
@@ -65,6 +66,7 @@ where
 {
     type Output = io::Result<u64>;
 
+    #[inline]
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
 

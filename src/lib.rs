@@ -33,12 +33,14 @@ pub enum DropError {
 impl<P: AsRef<Path>> Deref for DlFile<P> {
     type Target = File;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         &self.file
     }
 }
 
 impl<P: AsRef<Path>> DerefMut for DlFile<P> {
+    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.file
     }
@@ -99,6 +101,7 @@ pub enum OverwriteBehavior {
 }
 
 impl<P: AsRef<Path>> DlFile<P> {
+    #[inline]
     pub fn builder(path: P) -> DlFileBuilder<P> {
         DlFileBuilder::new(path)
     }
@@ -107,11 +110,13 @@ impl<P: AsRef<Path>> DlFile<P> {
     /// having to close + reopen it.
     ///
     /// In this context, 'reset' means seeking to the start of the file, and truncating to 0 bytes.
+    #[inline]
     pub async fn reset(&mut self) -> io::Result<()> {
         self.file.seek(io::SeekFrom::Start(0)).await?;
         self.file.set_len(0).await
     }
 
+    #[inline]
     pub async fn download_from_io_stream<S, B>(
         &mut self,
         size: Option<u64>,
@@ -130,7 +135,9 @@ impl<P: AsRef<Path>> DlFile<P> {
         download.await
     }
 
+    #[inline]
     pub async fn download_from_response(&mut self, response: reqwest::Response) -> io::Result<u64> {
+        #[inline]
         fn reqwest_error_to_io_error(error: reqwest::Error) -> io::Error {
             let kind = if let Some(status) = error.status() {
                 match status {
@@ -168,6 +175,7 @@ impl<P: AsRef<Path>> DlFile<P> {
         .await
     }
 
+    #[inline]
     pub async fn download_from_stream<S, B, E, F>(
         &mut self,
         size: Option<u64>,
