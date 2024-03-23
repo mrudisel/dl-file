@@ -15,5 +15,4 @@ tracing = { version = "0.1", optional = true }
 
 
 [features]
-default = ["tracing"]
 tracing = ["dep:tracing"]
