@@ -129,22 +129,35 @@ where
 
 #[derive(Debug)]
 pub struct ProgressHandle<F = fn(&Path, u64, Option<u64>, DlState)> {
+    shared: Arc<ProgressHandleShared>,
+    on_update: F,
+}
+
+#[derive(Debug)]
+pub struct ProgressHandleShared {
     total_bytes: AtomicU64,
     bytes_written: AtomicU64,
     finished: AtomicBool,
-    caller: F,
 }
 
 impl<F> ProgressHandle<F> {
-    pub const fn new(caller: F) -> Self {
+    pub fn new(on_update: F) -> Self {
         Self {
-            total_bytes: AtomicU64::new(0),
-            bytes_written: AtomicU64::new(0),
-            finished: AtomicBool::new(false),
-            caller,
+            shared: Arc::new(ProgressHandleShared {
+                total_bytes: AtomicU64::new(0),
+                bytes_written: AtomicU64::new(0),
+                finished: AtomicBool::new(false),
+            }),
+            on_update,
         }
     }
 
+    pub fn shared(&self) -> &Arc<ProgressHandleShared> {
+        &self.shared
+    }
+}
+
+impl ProgressHandleShared {
     pub fn state(&self) -> DlState {
         if self.is_finished() {
             DlState::Finished
@@ -184,28 +197,29 @@ where
 {
     fn start(&mut self, path: &Path, total_bytes: Option<u64>) {
         if let Some(total) = total_bytes {
-            self.total_bytes.store(total, Relaxed);
+            self.shared.total_bytes.store(total, Relaxed);
         }
 
-        (self.caller)(path, 0, total_bytes, DlState::Starting);
+        (self.on_update)(path, 0, total_bytes, DlState::Starting);
     }
 
     fn update(&mut self, path: &Path, bytes_written: u64) {
         let max = self
+            .shared
             .bytes_written
             .fetch_max(bytes_written, Relaxed)
             .max(bytes_written);
 
-        (self.caller)(path, max, self.get_total_bytes(), DlState::Running);
+        (self.on_update)(path, max, self.shared.get_total_bytes(), DlState::Running);
     }
 
     fn finished(&mut self, path: &Path) {
-        self.finished.store(true, Relaxed);
+        self.shared.finished.store(true, Relaxed);
 
-        (self.caller)(
+        (self.on_update)(
             path,
-            self.get_bytes_written(),
-            self.get_total_bytes(),
+            self.shared.get_bytes_written(),
+            self.shared.get_total_bytes(),
             DlState::Finished,
         );
     }
