@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 pub trait DlProgress {
     fn start(&mut self, path: &Path, total_bytes: Option<u64>);
@@ -35,6 +35,27 @@ impl<P: DlProgress + ?Sized> DlProgress for Box<P> {
         P::finished(self, path)
     }
 }
+
+
+
+impl<P> DlProgress for Arc<P>
+where
+    P: ?Sized,
+    for<'a> &'a P: DlProgress,    
+{
+    fn start(&mut self, path: &Path, total_bytes: Option<u64>) {
+        <&P as DlProgress>::start(&mut &**self, path, total_bytes)
+    }
+
+    fn update(&mut self, path: &Path, bytes_written: u64) {
+        <&P as DlProgress>::update(&mut &**self, path, bytes_written)
+    }
+
+    fn finished(&mut self, path: &Path) {
+        <&P as DlProgress>::finished(&mut &**self, path)
+    }
+}
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProgressContainer<
