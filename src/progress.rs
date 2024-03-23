@@ -3,7 +3,7 @@ use std::sync::atomic::Ordering::Relaxed;
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::Arc;
 
-pub trait DlProgress {
+pub trait DlProgress: Send {
     fn start(&mut self, path: &Path, total_bytes: Option<u64>);
 
     fn update(&mut self, path: &Path, bytes_written: u64);
@@ -47,7 +47,7 @@ impl<P: DlProgress + ?Sized> DlProgress for Box<P> {
 
 impl<P> DlProgress for Arc<P>
 where
-    P: ?Sized,
+    P: Send + Sync + ?Sized,
     for<'a> &'a P: DlProgress,
 {
     #[inline]
@@ -93,9 +93,10 @@ impl<Ctx, S, U, F> ProgressContainer<Ctx, S, U, F> {
 
 impl<Ctx, S, U, F> DlProgress for ProgressContainer<Ctx, S, U, F>
 where
-    S: FnOnce(&mut Ctx, &Path, Option<u64>),
-    U: FnMut(&mut Ctx, &Path, u64),
-    F: FnOnce(&mut Ctx, &Path),
+    S: FnOnce(&mut Ctx, &Path, Option<u64>) + Send,
+    U: FnMut(&mut Ctx, &Path, u64) + Send,
+    F: FnOnce(&mut Ctx, &Path) + Send,
+    Ctx: Send,
 {
     #[inline]
     fn start(&mut self, path: &Path, total_bytes: Option<u64>) {
@@ -119,9 +120,10 @@ where
 
 impl<Ctx, S, U, F> DlProgress for &ProgressContainer<Ctx, S, U, F>
 where
-    S: Fn(&Ctx, &Path, Option<u64>),
-    U: Fn(&Ctx, &Path, u64),
-    F: Fn(&Ctx, &Path),
+    Ctx: Sync,
+    S: Fn(&Ctx, &Path, Option<u64>) + Sync,
+    U: Fn(&Ctx, &Path, u64) + Sync,
+    F: Fn(&Ctx, &Path) + Sync,
 {
     #[inline]
     fn start(&mut self, path: &Path, total_bytes: Option<u64>) {
@@ -215,7 +217,7 @@ pub enum DlState {
 
 impl<F> DlProgress for &ProgressHandle<F>
 where
-    F: Fn(&Path, u64, Option<u64>, DlState),
+    F: Fn(&Path, u64, Option<u64>, DlState) + Sync,
 {
     #[inline]
     fn start(&mut self, path: &Path, total_bytes: Option<u64>) {
