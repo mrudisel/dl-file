@@ -72,6 +72,12 @@ impl<P: AsRef<Path>> DlFileBuilder<P> {
     pub async fn open(self, overwrite_behavior: OverwriteBehavior) -> io::Result<DlFile<P>> {
         let path = self.path.as_ref();
 
+        if let Some(parent) = path.parent() {
+            if !tokio::fs::try_exists(parent).await? {
+                tokio::fs::create_dir_all(parent).await?;
+            }
+        }
+
         let file = match overwrite_behavior {
             OverwriteBehavior::Do => tokio::fs::File::create(path).await?,
             OverwriteBehavior::Dont => {
