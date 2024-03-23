@@ -5,7 +5,8 @@ use std::sync::Arc;
 
 use tokio::sync::Semaphore;
 
-use crate::{DlFile, DlProgress, OverwriteBehavior};
+use crate::progress::DlProgress;
+use crate::{DlFile, OverwriteBehavior};
 
 pub struct DlFileBuilder<P: AsRef<Path> = PathBuf> {
     path: P,
@@ -66,10 +67,14 @@ impl<P: AsRef<Path>> DlFileBuilder<P> {
                 Ok(meta) if meta.len() == 0 => tokio::fs::File::create(path).await?,
                 Ok(meta) => {
                     return Err(io::Error::new(
-                        io::ErrorKind::AlreadyExists, 
-                        format!("non-empty ({} bytes) file '{}' already exists", meta.len(), self.path.as_ref().display()),
+                        io::ErrorKind::AlreadyExists,
+                        format!(
+                            "non-empty ({} bytes) file '{}' already exists",
+                            meta.len(),
+                            self.path.as_ref().display()
+                        ),
                     ));
-                },
+                }
                 Err(error) if error.kind() == io::ErrorKind::NotFound => {
                     tokio::fs::File::create(path).await?
                 }

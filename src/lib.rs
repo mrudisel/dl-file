@@ -12,13 +12,14 @@ use tokio::sync::Semaphore;
 
 mod builder;
 mod driver;
+pub mod progress;
 pub use builder::DlFileBuilder;
 
 pub struct DlFile<P: AsRef<Path> = PathBuf> {
     path: P,
     semaphore: Option<Arc<Semaphore>>,
     delete_if_empty: bool,
-    progress: Option<Box<dyn DlProgress>>,
+    progress: Option<Box<dyn progress::DlProgress>>,
     on_drop_error: Option<fn(io::Error)>,
     file: ManuallyDrop<File>,
 }
@@ -170,41 +171,5 @@ impl<P: AsRef<Path>> DlFile<P> {
     {
         self.download_from_io_stream(size, stream.map_err(map_err))
             .await
-    }
-}
-
-pub trait DlProgress {
-    fn start(&mut self, path: &Path, total_bytes: Option<u64>);
-
-    fn update(&mut self, path: &Path, bytes_written: u64);
-
-    fn finished(&mut self, path: &Path);
-}
-
-impl<P: DlProgress + ?Sized> DlProgress for &mut P {
-    fn start(&mut self, path: &Path, total_bytes: Option<u64>) {
-        P::start(self, path, total_bytes)
-    }
-
-    fn update(&mut self, path: &Path, bytes_written: u64) {
-        P::update(self, path, bytes_written)
-    }
-
-    fn finished(&mut self, path: &Path) {
-        P::finished(self, path)
-    }
-}
-
-impl<P: DlProgress + ?Sized> DlProgress for Box<P> {
-    fn start(&mut self, path: &Path, total_bytes: Option<u64>) {
-        P::start(self, path, total_bytes)
-    }
-
-    fn update(&mut self, path: &Path, bytes_written: u64) {
-        P::update(self, path, bytes_written)
-    }
-
-    fn finished(&mut self, path: &Path) {
-        P::finished(self, path)
     }
 }

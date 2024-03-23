@@ -9,7 +9,8 @@ use tokio::fs::File;
 use tokio::io::AsyncWrite;
 use tokio::sync::OwnedSemaphorePermit;
 
-use crate::{DlFile, DlProgress};
+use crate::progress::DlProgress;
+use crate::DlFile;
 
 pin_project_lite::pin_project! {
     pub(super) struct DownloadDriver<'a, S: Stream<Item = io::Result<B>>, B: Buf> {
@@ -117,6 +118,10 @@ where
 
         // if we made it here, there's no stream left and no current chunk, so we need to flush.
         std::task::ready!(this.file.as_mut().poll_flush(cx))?;
+
+        if let Some(ref mut prog) = this.progress {
+            prog.finished(this.path);
+        }
 
         Poll::Ready(Ok(*this.bytes_copied))
     }
