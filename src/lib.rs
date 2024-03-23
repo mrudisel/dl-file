@@ -72,7 +72,6 @@ impl<P: AsRef<Path>> Drop for DlFile<P> {
                     //
                     // if something panics before we can return, this is still safe from a double
                     // free.
-
                     unsafe { ManuallyDrop::drop(&mut self.file) };
 
                     if let Err(error) = std::fs::remove_file(self.path.as_ref()) {
