@@ -1,14 +1,16 @@
 use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::{fmt, io};
 
 use bytes::Buf;
 use futures::{Stream, TryStreamExt};
 use reqwest::StatusCode;
 use tokio::fs::File;
-use tokio::io::AsyncSeekExt;
+use tokio::io::{AsyncSeekExt, AsyncWrite};
 use tokio::sync::Semaphore;
 
 mod builder;
@@ -189,5 +191,36 @@ impl<P: AsRef<Path>> DlFile<P> {
     {
         self.download_from_io_stream(size, stream.map_err(map_err))
             .await
+    }
+}
+
+
+impl<P: AsRef<Path> + Unpin> AsyncWrite for DlFile<P> {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        Pin::new(&mut *self.get_mut().file).poll_write(cx, buf)
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut *self.get_mut().file).poll_flush(cx)
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut *self.get_mut().file).poll_shutdown(cx)
+    }
+
+    fn is_write_vectored(&self) -> bool {
+        self.file.is_write_vectored()
+    }
+
+    fn poll_write_vectored(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        bufs: &[io::IoSlice<'_>],
+    ) -> Poll<io::Result<usize>> {
+        Pin::new(&mut *self.get_mut().file).poll_write_vectored(cx, bufs)
     }
 }
