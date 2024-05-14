@@ -6,12 +6,12 @@ use std::sync::Arc;
 use tokio::sync::Semaphore;
 
 use crate::progress::DlProgress;
-use crate::{DlFile, DropError, OverwriteBehavior};
+use crate::{Delete, DlFile, DropError, OverwriteBehavior};
 
 pub struct DlFileBuilder<P: AsRef<Path> = PathBuf> {
     path: P,
     semaphore: Option<Arc<Semaphore>>,
-    delete_if_empty: bool,
+    delete: Delete,
     on_drop_error: Option<fn(&Path, DropError)>,
     progress: Option<Box<dyn DlProgress>>,
 }
@@ -23,14 +23,14 @@ impl<P: AsRef<Path>> DlFileBuilder<P> {
             path,
             semaphore: None,
             on_drop_error: None,
-            delete_if_empty: true,
+            delete: Delete::default(),
             progress: None,
         }
     }
 
     #[inline]
-    pub fn delete_if_empty(mut self, delete_if_empty: bool) -> Self {
-        self.delete_if_empty = delete_if_empty;
+    pub fn delete(mut self, delete: Delete) -> Self {
+        self.delete = delete;
         self
     }
 
@@ -113,7 +113,7 @@ impl<P: AsRef<Path>> DlFileBuilder<P> {
             on_drop_error: self.on_drop_error.unwrap_or(default_on_drop_error),
             #[cfg(feature = "tracing")]
             on_drop_error: self.on_drop_error.unwrap_or(default_error_on_drop_error),
-            delete_if_empty: self.delete_if_empty,
+            delete: self.delete,
             progress: self.progress,
             file: ManuallyDrop::new(file),
         })

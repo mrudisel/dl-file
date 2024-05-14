@@ -18,14 +18,38 @@ mod driver;
 pub mod progress;
 pub use builder::DlFileBuilder;
 
+
 pub struct DlFile<P: AsRef<Path> = PathBuf> {
     path: P,
     semaphore: Option<Arc<Semaphore>>,
-    delete_if_empty: bool,
+    delete: Delete,
     progress: Option<Box<dyn progress::DlProgress>>,
     on_drop_error: fn(&Path, DropError),
     file: ManuallyDrop<File>,
 }
+
+
+#[derive(Debug, Default, Clone, Copy)]
+pub enum Delete {
+    Dont,
+    #[default]
+    IfEmptyOnDrop,
+    If { delete_on_drop: bool },
+}
+
+impl Delete {
+    fn should_delete(&self, path: &Path) -> io::Result<bool> {
+        match self {
+            Self::Dont => Ok(false),
+            Self::IfEmptyOnDrop => {
+                let meta = std::fs::metadata(path)?;
+                Ok(meta.len() == 0)
+            },
+            Self::If { delete_on_drop } => Ok(*delete_on_drop),
+        }
+    }
+}
+
 
 pub enum DropError {
     Metadata(io::Error),
@@ -52,7 +76,7 @@ impl<P: AsRef<Path>> fmt::Debug for DlFile<P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DlFile")
             .field("path", &self.path.as_ref().display())
-            .field("delete_if_empty", &self.delete_if_empty)
+            .field("delete", &self.delete)
             .field("semaphore", &self.semaphore)
             .field(
                 "progress",
@@ -68,28 +92,33 @@ impl<P: AsRef<Path>> fmt::Debug for DlFile<P> {
 
 impl<P: AsRef<Path>> Drop for DlFile<P> {
     fn drop(&mut self) {
-        if self.delete_if_empty {
-            match std::fs::metadata(self.path.as_ref()) {
-                Ok(meta) if meta.len() == 0 => {
-                    // SAFETY: this only gets called once, and then we return early to prevent
-                    // the drop call at the bottom of this drop impl from being called.
-                    //
-                    // if something panics before we can return, this is still safe from a double
-                    // free.
-                    unsafe { ManuallyDrop::drop(&mut self.file) };
-
-                    if let Err(error) = std::fs::remove_file(self.path.as_ref()) {
-                        (self.on_drop_error)(self.path.as_ref(), DropError::Deleting(error));
-                    }
-                    // bail, so we dont drop twice
-                    return;
-                }
-                Ok(_) => (),
-                Err(error) => (self.on_drop_error)(self.path.as_ref(), DropError::Metadata(error)),
+        let should_delete = match self.delete.should_delete(self.path.as_ref()) {
+            Ok(should_delete) => should_delete,
+            Err(error) => {
+                (self.on_drop_error)(self.path.as_ref(), DropError::Metadata(error));
+                // SAFETY: We're only deleting this once, then returning.
+                unsafe { ManuallyDrop::drop(&mut self.file) }
+                return;
             }
-        }
+        };
 
-        // SAFETY: this only gets called once, since we returned early if we deleted the file.
+        if should_delete {
+            // SAFETY: this only gets called once, and then we return early to prevent
+            // the drop call at the bottom of this drop impl from being called.
+            //
+            // if something panics before we can return, this is still safe from a double
+            // free.
+            unsafe { ManuallyDrop::drop(&mut self.file) };
+
+            if let Err(error) = std::fs::remove_file(self.path.as_ref()) {
+                (self.on_drop_error)(self.path.as_ref(), DropError::Deleting(error));
+            }
+            // bail, so we dont drop twice
+            return;
+        }
+        
+        // SAFETY: this only gets called once, since we returned early if we deleted the file
+        // or ran into an error;
         unsafe { ManuallyDrop::drop(&mut self.file) }
     }
 }
@@ -116,6 +145,10 @@ impl<P: AsRef<Path>> DlFile<P> {
     pub async fn reset(&mut self) -> io::Result<()> {
         self.file.seek(io::SeekFrom::Start(0)).await?;
         self.file.set_len(0).await
+    }
+
+    pub fn set_delete(&mut self, delete: Delete) {
+        self.delete = delete;
     }
 
     #[inline]
