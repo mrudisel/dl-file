@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tokio::sync::Semaphore;
 
 use crate::progress::DlProgress;
-use crate::{Delete, DlFile, DropError, OverwriteBehavior};
+use crate::{Delete, DlFile, DlFileWriter, DropError, OverwriteBehavior};
 
 pub struct DlFileBuilder<P: AsRef<Path> = PathBuf> {
     path: P,
@@ -67,6 +67,16 @@ impl<P: AsRef<Path>> DlFileBuilder<P> {
             tracing::Level::WARN => default_warn_on_drop_error,
             tracing::Level::ERROR => default_error_on_drop_error,
         })
+    }
+
+    pub async fn open_as_writer(
+        self,
+        overwrite_behavior: OverwriteBehavior,
+        estimated_size: Option<u64>,
+    ) -> io::Result<DlFileWriter<P>> {
+        let file = self.open(overwrite_behavior).await?;
+
+        Ok(file.into_async_writer(estimated_size))
     }
 
     pub async fn open(self, overwrite_behavior: OverwriteBehavior) -> io::Result<DlFile<P>> {

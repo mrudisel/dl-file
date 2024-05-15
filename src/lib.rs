@@ -15,9 +15,11 @@ use tokio::sync::Semaphore;
 
 mod builder;
 mod driver;
+mod writer;
+
+pub use writer::DlFileWriter;
 pub mod progress;
 pub use builder::DlFileBuilder;
-
 
 pub struct DlFile<P: AsRef<Path> = PathBuf> {
     path: P,
@@ -28,28 +30,26 @@ pub struct DlFile<P: AsRef<Path> = PathBuf> {
     file: ManuallyDrop<File>,
 }
 
-
 #[derive(Debug, Default, Clone, Copy)]
 pub enum Delete {
-    Dont,
+    Yes,
+    No,
     #[default]
     IfEmptyOnDrop,
-    If { delete_on_drop: bool },
 }
 
 impl Delete {
     fn should_delete(&self, path: &Path) -> io::Result<bool> {
         match self {
-            Self::Dont => Ok(false),
+            Self::Yes => Ok(true),
+            Self::No => Ok(false),
             Self::IfEmptyOnDrop => {
                 let meta = std::fs::metadata(path)?;
                 Ok(meta.len() == 0)
-            },
-            Self::If { delete_on_drop } => Ok(*delete_on_drop),
+            }
         }
     }
 }
-
 
 pub enum DropError {
     Metadata(io::Error),
@@ -116,7 +116,7 @@ impl<P: AsRef<Path>> Drop for DlFile<P> {
             // bail, so we dont drop twice
             return;
         }
-        
+
         // SAFETY: this only gets called once, since we returned early if we deleted the file
         // or ran into an error;
         unsafe { ManuallyDrop::drop(&mut self.file) }
@@ -145,6 +145,11 @@ impl<P: AsRef<Path>> DlFile<P> {
     pub async fn reset(&mut self) -> io::Result<()> {
         self.file.seek(io::SeekFrom::Start(0)).await?;
         self.file.set_len(0).await
+    }
+
+    #[inline]
+    pub fn into_async_writer(self, estimated_size: Option<u64>) -> DlFileWriter<P> {
+        DlFileWriter::new(self, estimated_size)
     }
 
     pub fn set_delete(&mut self, delete: Delete) {
@@ -224,36 +229,5 @@ impl<P: AsRef<Path>> DlFile<P> {
     {
         self.download_from_io_stream(size, stream.map_err(map_err))
             .await
-    }
-}
-
-
-impl<P: AsRef<Path> + Unpin> AsyncWrite for DlFile<P> {
-    fn poll_write(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<io::Result<usize>> {
-        Pin::new(&mut *self.get_mut().file).poll_write(cx, buf)
-    }
-
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Pin::new(&mut *self.get_mut().file).poll_flush(cx)
-    }
-
-    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Pin::new(&mut *self.get_mut().file).poll_shutdown(cx)
-    }
-
-    fn is_write_vectored(&self) -> bool {
-        self.file.is_write_vectored()
-    }
-
-    fn poll_write_vectored(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        bufs: &[io::IoSlice<'_>],
-    ) -> Poll<io::Result<usize>> {
-        Pin::new(&mut *self.get_mut().file).poll_write_vectored(cx, bufs)
     }
 }
